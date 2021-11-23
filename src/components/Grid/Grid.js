@@ -1,5 +1,5 @@
 import React, { useEffect, useReducer, useState } from 'react';
-import { MAX, SEQUENCE_LENGTH, INITIAL_COLOR } from '../../config'
+import { MAX, SEQUENCE_LENGTH, INITIAL_COLOR, UPDATE_COLOR } from '../../config'
 import { fibonacci } from '../../utils';
 
 import ColorPanel from '../ColorPanel/ColorPanel';
@@ -14,20 +14,40 @@ const SUITE = fibonacci(50);
  */
 function reducer(data, action) {
     const val = JSON.parse(JSON.stringify(data));
-    const { results } = action;
+    const { results, coord } = action;
     switch(action.type) {
         case 'inc':
-            const { coord } = action;
-            val[coord.x][coord.y].value = val[coord.x][coord.y].value + 1;
+            for ( let i = 0; i < MAX; i ++ ) {
+                val[coord.x][i].value = val[coord.x][i].value + 1;
+                val[coord.x][i].color = UPDATE_COLOR;
+            }
+            for ( let j = 0; j < MAX; j ++ ) {
+                if ( coord.x !== j ) {
+                    val[j][coord.y].value = val[j][coord.y].value + 1;
+                    val[j][coord.y].color = UPDATE_COLOR;
+                }
+            }
             return val;
         case 'color':
-            results.forEach( (line) => {
-                line && draw(line.start.coord, line.end.coord, val);
+            results.forEach( (lines) => {
+                for ( let i = 0; i < lines.length; i ++ ) {
+                    draw(lines[i].start.coord, lines[i].end.coord, val, 'green' );
+                }
             })
             return val;
+        case 'reset_color':
+            for ( let i = 0; i < MAX; i ++ ) {
+                val[coord.x][i].color = INITIAL_COLOR;
+            }
+            for ( let j = 0; j < MAX; j ++ ) {
+                val[j][coord.y].color = INITIAL_COLOR;
+            }
+            return val;
         case 'reset':
-            results.forEach( (line) => {
-                line && reset(line.start.coord, line.end.coord, val);
+            results.forEach( (lines) => {
+                for ( let i = 0; i < lines.length; i ++ ) {
+                    reset(lines[i].start.coord, lines[i].end.coord, val);
+                }
             })
             return val;
         case 'init':
@@ -69,8 +89,8 @@ function reset( start, end, list) {
  * @param {*} end 
  * @param {*} list 
  */
-function draw(  start, end , list ) {
-    goThrough( start, end , list, (elt) => elt.color = 'green');
+function draw(  start, end , list, color ) {
+    goThrough( start, end , list, (elt) => elt.color = color);
 }
 
 /**
@@ -78,9 +98,9 @@ function draw(  start, end , list ) {
  */
 const Grid = () => {
     const [data, dispatch] = useReducer(reducer, []);
-    const [lastUpdatedCell, setLastUpdated] = useState({x:0,y:0});
     const [resetting, setReset ] = useState(false);
     const [lines, setLines ] = useState([]);
+    const [ validate, setValidate ] = useState(false);
 
     /**
      * Initialise the array when component is mounted.
@@ -99,43 +119,45 @@ const Grid = () => {
     useEffect( () => {
         /** Validate the sequence */
         const validateSequence = () => {
-            if ( data.length > 0  && resetting === false ) {
-                const coord = lastUpdatedCell;
-                // Avoid negatives;
-                const minx = Math.max( 0, coord.x - SEQUENCE_LENGTH );
-                const miny = Math.max( 0, coord.y - SEQUENCE_LENGTH );
-                // Avoid getting out of the array.
-                const maxx = Math.min( MAX , coord.x + SEQUENCE_LENGTH);
-                const maxy = Math.min( MAX , coord.y + SEQUENCE_LENGTH);
-                const rowArray = [];
-                const colArray = [];
-                for ( let i = minx; i < maxx; i++ ) {
-                    rowArray.push(data[i][coord.y])
+            if ( data.length > 0  && validate === true ) {
+                const RowResults = [];
+                const ColResults = [];
+                for ( let i = 0; i < MAX; i++ ) {
+                    let row = [];
+                    let col = [];
+                    for ( let j = 0; j < MAX; j++) {
+                        row.push(data[i][j]);
+                        col.push(data[j][i])
+                    }
+                    const aRow = iterativeSearch(row);
+                    const aCol = iterativeSearch(col);
+                    if ( aRow ) {
+                        RowResults.push(aRow);
+                    }
+                    if ( aCol ) {
+                        ColResults.push(aCol);
+                    }
                 }
-                for ( let j = miny; j < maxy; j++) {
-                    colArray.push(data[coord.x][j])
-                } 
-                const RowResults = iterativeSearch(rowArray) || null;
-                const ColResults = iterativeSearch(colArray) || null;
-                if ( RowResults || ColResults ) {
+                if ( RowResults.length > 0  || ColResults.length > 0 ) {
                     const results = [ RowResults, ColResults]
                     setReset(true);
                     setLines(results)
                     dispatch({type: 'color', results })
+                    setValidate(false);
                 }
             }
         }
         validateSequence();
-    },[data, lastUpdatedCell, resetting])
+    },[data, resetting, validate])
 
     useEffect( () => {
         if ( resetting && lines.length > 0) {
-            const timeoutId = setTimeout(() => {
+            const timeoutId = setInterval(() => {
                 dispatch({type: 'reset', results: lines })
                 setLines([]);
                 setReset(false)
             }, 500);
-            return () => clearTimeout(timeoutId);
+            return () => clearInterval(timeoutId);
         }
     },[resetting, lines])
 
@@ -143,7 +165,11 @@ const Grid = () => {
         e.preventDefault();
         if ( !resetting ) {
             dispatch({type: 'inc', coord});
-            setLastUpdated(coord);    
+            const timeoutId = setInterval(() => {
+                clearInterval(timeoutId);
+                dispatch({type: 'reset_color', coord});
+                setValidate(true);
+            }, 100);
         }
     }
 
@@ -206,4 +232,3 @@ const Grid = () => {
 }
 
 export default Grid;
-

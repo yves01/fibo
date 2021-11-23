@@ -4,9 +4,7 @@ import Grid from '../src/components/Grid/Grid';
 function App() {
   return (
     <div className="App">
-      <header className="App-header">
-        <Grid></Grid>
-      </header>
+      <Grid></Grid>
     </div>
   );
 }
